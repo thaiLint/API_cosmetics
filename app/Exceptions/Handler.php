@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Exceptions;
+use Illuminate\Auth\AuthenticationException;
 
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Throwable;
@@ -45,4 +46,12 @@ class Handler extends ExceptionHandler
             //
         });
     }
+    protected function unauthenticated($request, AuthenticationException $exception)
+{
+    // Force JSON response for API routes
+    return $request->expectsJson()
+        ? response()->json(['error' => 'Unauthorized'], 401)
+        : response()->json(['error' => 'Unauthorized'], 401);
+}
+
 }

@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Facade;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 return [
 
@@ -65,5 +66,18 @@ return [
         'JWTAuth' => Tymon\JWTAuth\Facades\JWTAuth::class,
         'JWTFactory' => Tymon\JWTAuth\Facades\JWTFactory::class,
     ])->toArray(),
+
+    'guards' => [
+    'web' => [
+        'driver' => 'session',
+        'provider' => 'users',
+    ],
+
+    'api' => [
+        'driver' => 'jwt',      
+        'provider' => 'users',
+        'hash' => false,
+    ],
+],
 
 ];

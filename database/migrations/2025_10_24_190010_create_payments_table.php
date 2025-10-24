@@ -13,13 +13,11 @@ return new class extends Migration
     {
         Schema::create('payments', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('order_id')->nullable();
-            $table->unsignedBigInteger('user_id')->nullable();
-            $table->string('shop_account');
-            $table->decimal('amount', 15, 2);
-            $table->string('currency', 10)->default('KHR');
-            $table->string('status')->default('pending'); // pending, paid, failed
-            $table->string('transaction_id')->nullable();
+             $table->foreignId('user_id')->constrained();
+    $table->foreignId('shop_id')->constrained();
+    $table->decimal('amount', 10, 2);
+    $table->string('qr_url');
+             $table->string('status')->default('pending');
             $table->timestamps();
         });
     }
