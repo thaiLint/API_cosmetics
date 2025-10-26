@@ -2,32 +2,52 @@
 
 namespace App\Services;
 
-use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Illuminate\Support\Facades\Storage;
-
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
+use SimpleSoftwareIO\QrCode\Generator;
 class BakongPaymentService
 {
-    // Generate QR for a user to scan
-    public function generateIndividualQR($shopId, $amount)
+  
+
+
+public function makeQR($data)
+{
+    $filename = 'bakong_' . time() . '.png';
+    $path = 'public/qr_codes/' . $filename;
+
+    $qrContent = json_encode([
+        'amount' => $data['amount'],
+        'order_id' => $data['order_id'],
+        'shop' => 'MyShop',
+    ]);
+
+    Storage::makeDirectory('public/qr_codes');
+
+    // Use GD backend
+    QrCode::format('png')
+          ->size(300)
+          ->generate($qrContent, storage_path('app/' . $path));
+
+    return [
+        'qr_code_url' => asset(Storage::url('qr_codes/' . $filename))
+    ];
+}
+
+
+    public function verifyMD5($payload)
     {
-        $data = "shop:$shopId|amount:$amount|time:".time();
-        return $this->makeQR($data);
+        $secretKey = env('BAKONG_SECRET_KEY');
+        $expected = md5($payload['order_id'] . $payload['amount'] . $secretKey);
+        return $expected === $payload['md5_hash'];
     }
 
-    // Make a QR code image and return URL
-    public function makeQR($data)
+    public function updatePaymentStatus($payload)
     {
-        $fileName = 'qr_codes/QR_'.time().'.png';
-        $path = storage_path('app/public/' . $fileName);
-
-        QrCode::format('png')->size(300)->generate($data, $path);
-
-        return asset('storage/' . $fileName);
-    }
-
-    // Verify MD5 hash
-    public function verifyMD5($data, $hash)
-    {
-        return md5($data) === $hash;
+        // update payment in database
+        $payment = \App\Models\Payment::where('order_id', $payload['order_id'])->first();
+        if ($payment) {
+            $payment->status = 'completed';
+            $payment->save();
+        }
     }
 }

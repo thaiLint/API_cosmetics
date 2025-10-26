@@ -2,113 +2,106 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Order;
+use Illuminate\Support\Facades\Http;
 use App\Models\Payment;
-use App\Models\Shop;
+use App\Models\Message;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
 use App\Services\PaymentService;
 use App\Services\BakongPaymentService;
 
 class PaymentController extends Controller
 {
-    protected $paymentService;
-    protected $bakongPaymentService;
-
-    public function __construct(PaymentService $paymentService, BakongPaymentService $bakongPaymentService)
-    {
-        $this->paymentService = $paymentService;
-        $this->bakongPaymentService = $bakongPaymentService;
-    }
-
-    /**
-     * Make a new payment
-     */
     public function makePayment(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'user_id' => 'required|integer',
-            'shop_id' => 'required|integer',
-            'total_price' => 'required|numeric',
+            'amount' => 'required|numeric|min:0.01',
+            'method' => 'required|string|in:cash,card,credit_card,bakong_qr,stripe',
+            'order_id' => 'nullable|integer'
         ]);
 
-        $payment = $this->paymentService->makePayment(
-            $request->user_id,
-            $request->shop_id,
-            $request->total_price
-        );
+        $payment = app(PaymentService::class)->makePayment($validated);
 
         return response()->json([
-            'success' => true,
+            'message' => 'Payment processed',
             'payment' => $payment
         ]);
     }
 
-    /**
-     * Get all payments, optionally filtered by shop
-     */
-    public function getAllPayments(Request $request)
+    // Bakong callback
+    public function bakongCallback(Request $request)
     {
-        $shopId = $request->query('shop_id');
+        $payload = $request->all();
+        $amount = $payload['amount'] ?? 0;
+        $orderId = $payload['order_id'] ?? null;
 
-        $payments = $this->paymentService->getAllPayments($shopId);
+        $verified = app(BakongPaymentService::class)->verifyMD5($payload);
+        if (!$verified) {
+            return response()->json(['message' => 'Invalid signature'], 400);
+        }
 
-        return response()->json([
-            'success' => true,
-            'payments' => $payments
+        $payment = Payment::where('order_id', $orderId)->first();
+        if ($payment) {
+            $payment->status = 'completed';
+            $payment->amount = $amount;
+            $payment->save();
+        }
+
+        return response()->json(['message' => 'Callback processed successfully']);
+    }
+
+    // Private function inside controller
+    private function sendTelegramNotification($message)
+    {
+        $botToken = env('TELEGRAM_BOT_TOKEN');
+        $chatId = env('TELEGRAM_CHAT_ID');
+
+        $url = "https://api.telegram.org/bot{$botToken}/sendMessage";
+
+        Http::post($url, [
+            'chat_id' => $chatId,
+            'text' => $message,
+            'parse_mode' => 'HTML'
         ]);
     }
 
-    /**
-     * Handle payment callback and verify MD5
-     */
-    public function paymentCallback(Request $request)
+    public function paymentSuccess(Request $request)
     {
-        $request->validate([
-            'payment_id' => 'required|integer',
-            'md5_hash' => 'required|string',
-        ]);
+        $user = auth()->user();
+        $order = $request->order; // order info from frontend
 
-        // Start DB transaction
-        DB::beginTransaction();
-        try {
-            // Retrieve payment
-            $payment = $this->paymentService->getPaymentById($request->payment_id);
-
-            if (!$payment) {
-                return response()->json(['success' => false, 'message' => 'Payment not found'], 404);
-            }
-
-            // Build the data string exactly as in QR generation
-            $data = "shop:{$payment->shop_id}|amount:{$payment->amount}|time:" . strtotime($payment->created_at);
-
-            // Verify MD5
-            $isValid = $this->bakongPaymentService->verifyMD5($data, $request->md5_hash);
-
-            if (!$isValid) {
-                return response()->json(['success' => false, 'message' => 'Invalid MD5 hash'], 400);
-            }
-
-            // Update payment status
-            $payment->status = 'completed';
-            $payment->save();
-
-            DB::commit();
-
-            Log::info("Payment verified and completed: {$payment->id}");
-
-            return response()->json(['success' => true, 'payment' => $payment]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error("Payment callback failed: " . $e->getMessage());
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Payment verification failed',
-                'error' => $e->getMessage()
-            ], 500);
+        // Build product list string
+        $itemsText = "";
+        foreach ($order['items'] as $item) {
+            $itemsText .= "• <b>{$item['name']}</b> x {$item['quantity']} = {$item['price']} USD\n";
         }
+
+        // Full Telegram message
+        $message = "✅ <b>New Order Completed</b>\n\n";
+        $message .= "<b>User:</b> {$user->name} ({$user->email})\n";
+        $message .= "<b>Order ID:</b> {$order['id']}\n";
+        $message .= "<b>Items:</b>\n{$itemsText}";
+        $message .= "<b>Total:</b> {$order['total']} USD\n";
+        $message .= "<b>Payment Status:</b> Successful ✅\n";
+        $message .= "<b>Date:</b> " . now()->format('Y-m-d H:i') . "\n";
+
+        // Send Telegram notification
+        $this->sendTelegramNotification($message);
+
+        // Optional: Send chat message to shop
+        if(isset($order['shop_id'])) {
+            Message::create([
+                'sender_id' => $user->id,
+                'sender_type' => 'user',
+                'receiver_id' => $order['shop_id'],
+                'receiver_type' => 'shop',
+                'message' => "New order #{$order['id']} completed by {$user->name}. Total: {$order['total']} USD"
+            ]);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Order completed, Telegram notified, and shop chat updated'
+        ]);
     }
 }

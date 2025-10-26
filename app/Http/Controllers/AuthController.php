@@ -1,12 +1,14 @@
 <?php
 
 namespace App\Http\Controllers;
-
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Tymon\JWTAuth\Facades\JWTAuth;
+use App\Mail\PasswordResetCodeMail;
 use Illuminate\Support\Str;
 
 class AuthController extends Controller
@@ -55,53 +57,83 @@ class AuthController extends Controller
     /**
      * Generate password reset token
      */
-    public function forgotPassword(Request $request)
-    {
-        $request->validate([
-            'email' => 'required|email',
-        ]);
+public function forgotPassword(Request $request)
+{
+    $request->validate([
+        'email' => 'required|email|',
+    ]);
+    $user = User::where('email', $request->email)->first();
+if (!$user) {
+   
+    return response()->json([
+        'message' => 'If your email exists, a verification code has been sent.'
+    ]);
+}
 
-        $token = Str::random(60);
+    // Generate a 6-digit numeric code
+    $code = rand(100000, 999999);
 
-        DB::table('password_resets')->updateOrInsert(
-            ['email' => $request->email],
-            [
-                'token' => Hash::make($token),
-                'created_at' => now(),
-            ]
-        );
+    // Store hashed code in password_resets table
+    DB::table('password_resets')->updateOrInsert(
+        ['email' => $request->email],
+        [
+            'token' => Hash::make((string)$code),
+            'created_at' => now(),
+        ]
+    );
 
-        return response()->json([
-            'message' => 'Password reset token generated successfully',
-            'token' => $token // for testing in Postman
-        ]);
-    }
+    // Send the plain code via email
+    Mail::to($request->email)->send(new PasswordResetCodeMail($code));
+
+    return response()->json([
+        'message' => 'Verification code sent successfully to your email.'
+    ]);
+}
+
 
     /**
      * Reset password using token
      */
-    public function resetPassword(Request $request)
-    {
-        $request->validate([
-            'email' => 'required|email|exists:users,email',
-            'token' => 'required|string',
-            'password' => 'required|string|min:6|confirmed',
-        ]);
+   public function resetPassword(Request $request)
+{
+    $request->validate([
+        'email' => 'required|email|exists:users,email',
+        'token' => 'required|string', // the 6-digit code user received
+        'password' => 'required|string|min:6|confirmed',
+    ]);
 
-        $passwordReset = DB::table('password_resets')
-            ->where('email', $request->email)
-            ->first();
+    // Fetch the reset record
+    $passwordReset = DB::table('password_resets')
+        ->where('email', $request->email)
+        ->first();
 
-        if (!$passwordReset || !Hash::check($request->token, $passwordReset->token)) {
-            return response()->json(['error' => 'Invalid token or email'], 400);
-        }
-
-        $user = User::where('email', $request->email)->first();
-        $user->password = Hash::make($request->password);
-        $user->save();
-
-        DB::table('password_resets')->where('email', $request->email)->delete();
-
-        return response()->json(['message' => 'Password has been reset successfully']);
+    if (!$passwordReset || !Hash::check($request->token, $passwordReset->token)) {
+        return response()->json(['error' => 'Invalid token or email'], 400);
     }
+
+    // Update the user's password
+    $user = User::where('email', $request->email)->first();
+    $user->password = Hash::make($request->password);
+    $user->save();
+
+    // Delete the used token
+    DB::table('password_resets')->where('email', $request->email)->delete();
+
+    return response()->json(['message' => 'Password reset successfully']);
+}
+
+    public function logout(Request $request)
+{
+    try {
+        JWTAuth::invalidate(JWTAuth::getToken());
+
+        return response()->json([
+            'message' => 'User logged out successfully'
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'Failed to logout, token invalid or missing'
+        ], 500);
+    }
+}
 }

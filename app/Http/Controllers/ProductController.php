@@ -122,31 +122,50 @@ class ProductController extends Controller
 
         return response()->json(['message' => 'Products linked to categories successfully']);
     }
-     public function search(Request $request)
+    // Search products by name, description, or category
+public function search(Request $request)
 {
-    $query = $request->input('q'); // get search term from ?q=...
+    $query = $request->input('query'); // keyword from frontend
 
     if (!$query) {
         return response()->json([
             'status' => 400,
-            'message' => 'Please provide a search term'
-        ], 400);
+            'message' => 'Search query is required'
+        ]);
     }
 
-    $products = Products::where('name', 'like', "%{$query}%")->get();
+    $products = Products::where('name', 'like', "%{$query}%")
+        ->orWhere('description', 'like', "%{$query}%")
+        ->orWhere('category', 'like', "%{$query}%")
+        ->get();
 
     if ($products->isEmpty()) {
         return response()->json([
             'status' => 404,
             'message' => 'No products found'
-        ], 404);
+        ]);
     }
+
+    $data = $products->map(function ($product) {
+        return [
+            'id' => $product->id,
+            'name' => $product->name,
+            'description' => $product->description,
+            'price' => $product->price,
+            'qty' => $product->qty,
+            'category' => $product->category,
+            'image' => $product->images[0] ?? null,
+            'images' => $product->images,
+        ];
+    });
 
     return response()->json([
         'status' => 200,
-        'data' => $products
+        'data' => $data
     ]);
 }
 
+
+    
 }
 
