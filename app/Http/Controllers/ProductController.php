@@ -6,9 +6,13 @@ use App\Models\Category;
 use App\Models\Products;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+
 class ProductController extends Controller
 {
-   // Insert multiple products
+    // Predefined allowed sizes
+    private $allowedSizes = ['50ml', '100ml', '200ml'];
+
+    // Insert multiple products
     public function create(Request $request)
     {
         $products = $request->all();
@@ -21,9 +25,13 @@ class ProductController extends Controller
                 'description' => 'required|string',
                 'price' => 'required|numeric',
                 'qty' => 'required|integer',
-                'category' => 'required|string',    // temporary category name
+                'category' => 'required|string',
                 'images' => 'required|array',
                 'images.*' => 'required|url',
+                'ingredients' => 'sometimes|string',
+                'size' => 'sometimes|string|in:' . implode(',', $this->allowedSizes),
+            ], [
+                'size.in' => 'The selected size is invalid. Allowed sizes: ' . implode(', ', $this->allowedSizes),
             ])->validate();
 
             // Create product
@@ -32,9 +40,11 @@ class ProductController extends Controller
                 'description' => $validated['description'],
                 'price' => $validated['price'],
                 'qty' => $validated['qty'],
-                'category' => $validated['category'], // store as string for now
+                'category' => $validated['category'], // temporary string
                 'images' => $validated['images'],
                 'image' => $validated['images'][0] ?? null,
+                'ingredients' => $validated['ingredients'] ?? null,
+                'size' => $validated['size'] ?? null,
             ]);
         }
 
@@ -55,9 +65,11 @@ class ProductController extends Controller
                 'description' => $product->description,
                 'price' => $product->price,
                 'qty' => $product->qty,
-                'category' => $product->category,       // temporary string
+                'category' => $product->category,
                 'image' => $product->images[0] ?? null,
                 'images' => $product->images,
+                'ingredients' => $product->ingredients,
+                'size' => $product->size,
             ];
         });
 
@@ -84,6 +96,8 @@ class ProductController extends Controller
                 'category' => $product->category,
                 'image' => $product->images[0] ?? null,
                 'images' => $product->images,
+                'ingredients' => $product->ingredients,
+                'size' => $product->size,
             ]
         ]);
     }
@@ -103,13 +117,15 @@ class ProductController extends Controller
                 'category' => $product->category,
                 'image' => $product->images[0] ?? null,
                 'images' => $product->images,
+                'ingredients' => $product->ingredients,
+                'size' => $product->size,
             ];
         });
 
         return response()->json(['status' => 200, 'data' => $data]);
     }
 
-    
+    // Link products to categories
     public function linkCategories()
     {
         $products = Products::all();
@@ -122,50 +138,49 @@ class ProductController extends Controller
 
         return response()->json(['message' => 'Products linked to categories successfully']);
     }
+
     // Search products by name, description, or category
-public function search(Request $request)
-{
-    $query = $request->input('query'); // keyword from frontend
+    public function search(Request $request)
+    {
+        $query = $request->input('query');
 
-    if (!$query) {
+        if (!$query) {
+            return response()->json([
+                'status' => 400,
+                'message' => 'Search query is required'
+            ]);
+        }
+
+        $products = Products::where('name', 'like', "%{$query}%")
+            ->orWhere('description', 'like', "%{$query}%")
+            ->orWhere('category', 'like', "%{$query}%")
+            ->get();
+
+        if ($products->isEmpty()) {
+            return response()->json([
+                'status' => 404,
+                'message' => 'No products found'
+            ]);
+        }
+
+        $data = $products->map(function ($product) {
+            return [
+                'id' => $product->id,
+                'name' => $product->name,
+                'description' => $product->description,
+                'price' => $product->price,
+                'qty' => $product->qty,
+                'category' => $product->category,
+                'image' => $product->images[0] ?? null,
+                'images' => $product->images,
+                'ingredients' => $product->ingredients,
+                'size' => $product->size,
+            ];
+        });
+
         return response()->json([
-            'status' => 400,
-            'message' => 'Search query is required'
+            'status' => 200,
+            'data' => $data
         ]);
     }
-
-    $products = Products::where('name', 'like', "%{$query}%")
-        ->orWhere('description', 'like', "%{$query}%")
-        ->orWhere('category', 'like', "%{$query}%")
-        ->get();
-
-    if ($products->isEmpty()) {
-        return response()->json([
-            'status' => 404,
-            'message' => 'No products found'
-        ]);
-    }
-
-    $data = $products->map(function ($product) {
-        return [
-            'id' => $product->id,
-            'name' => $product->name,
-            'description' => $product->description,
-            'price' => $product->price,
-            'qty' => $product->qty,
-            'category' => $product->category,
-            'image' => $product->images[0] ?? null,
-            'images' => $product->images,
-        ];
-    });
-
-    return response()->json([
-        'status' => 200,
-        'data' => $data
-    ]);
 }
-
-
-    
-}
-

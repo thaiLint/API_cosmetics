@@ -1,139 +1,149 @@
 <?php
 
 namespace App\Http\Controllers;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Log;
-use App\Models\User;
+
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use App\Models\User;
 use Illuminate\Support\Facades\Hash;
-use Tymon\JWTAuth\Facades\JWTAuth;
-use App\Mail\PasswordResetCodeMail;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
+use Tymon\JWTAuth\Facades\JWTAuth;
+use Illuminate\Support\Facades\Log;
+
 
 class AuthController extends Controller
 {
-    /**
-     * Register a new user
-     */
+    // Register user
     public function register(Request $request)
     {
         $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|unique:users',
-            'password' => 'required|string|min:6|confirmed',
+            'name'=>'required|string|max:255',
+            'email'=>'required|string|email|unique:users',
+            'password'=>'required|string|min:6|confirmed',
         ]);
 
         $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
+            'name'=>$request->name,
+            'email'=>$request->email,
+            'password'=>Hash::make($request->password),
         ]);
 
         return response()->json([
-            'message' => 'User registered successfully',
-            'user' => $user
-        ], 201);
+            'message'=>'User registered successfully',
+            'user'=>$user
+        ]);
     }
 
-    /**
-     * Login user and return JWT token
-     */
+    // Login user
     public function login(Request $request)
     {
-        $credentials = $request->only('email', 'password');
+        $credentials = $request->only('email','password');
 
-        if (!$token = JWTAuth::attempt($credentials)) {
-            return response()->json(['error' => 'Invalid credentials'], 401);
+        if(!$token = JWTAuth::attempt($credentials)){
+            return response()->json(['error'=>'Invalid credentials'], 401);
         }
 
         return response()->json([
-            'message' => 'Login successful',
-            'token' => $token,
-            'user' => auth()->user()
+            'message'=>'Login successful',
+            'token'=>$token,
+            'user'=>auth()->user()
         ]);
     }
 
-    /**
-     * Generate password reset token
-     */
-public function forgotPassword(Request $request)
-{
-    $request->validate([
-        'email' => 'required|email|',
-    ]);
-    $user = User::where('email', $request->email)->first();
-if (!$user) {
-   
-    return response()->json([
-        'message' => 'If your email exists, a verification code has been sent.'
-    ]);
-}
+    // Forgot Password - generate token
+    public function forgotPassword(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email|exists:users,email',
+        ]);
 
-    // Generate a 6-digit numeric code
-    $code = rand(100000, 999999);
+        $token = Str::random(60);
 
-    // Store hashed code in password_resets table
-    DB::table('password_resets')->updateOrInsert(
-        ['email' => $request->email],
-        [
-            'token' => Hash::make((string)$code),
-            'created_at' => now(),
-        ]
-    );
+        DB::table('password_resets')->updateOrInsert(
+            ['email' => $request->email],
+            [
+                'token' => Hash::make($token),
+                'created_at' => now(),
+            ]
+        );
 
-    // Send the plain code via email
-    Mail::to($request->email)->send(new PasswordResetCodeMail($code));
-
-    return response()->json([
-        'message' => 'Verification code sent successfully to your email.'
-    ]);
-}
-
-
-    /**
-     * Reset password using token
-     */
-   public function resetPassword(Request $request)
-{
-    $request->validate([
-        'email' => 'required|email|exists:users,email',
-        'token' => 'required|string', // the 6-digit code user received
-        'password' => 'required|string|min:6|confirmed',
-    ]);
-
-    // Fetch the reset record
-    $passwordReset = DB::table('password_resets')
-        ->where('email', $request->email)
-        ->first();
-
-    if (!$passwordReset || !Hash::check($request->token, $passwordReset->token)) {
-        return response()->json(['error' => 'Invalid token or email'], 400);
-    }
-
-    // Update the user's password
-    $user = User::where('email', $request->email)->first();
-    $user->password = Hash::make($request->password);
-    $user->save();
-
-    // Delete the used token
-    DB::table('password_resets')->where('email', $request->email)->delete();
-
-    return response()->json(['message' => 'Password reset successfully']);
-}
-
-    public function logout(Request $request)
-{
-    try {
-        JWTAuth::invalidate(JWTAuth::getToken());
+        // For testing, return token directly instead of sending email
+        // Later you can uncomment Mail::raw for actual email sending
+        /*
+        Mail::raw("Use this token to reset your password: $token", function($message) use ($request) {
+            $message->to($request->email)
+                ->subject('Password Reset Request');
+        });
+        */
 
         return response()->json([
-            'message' => 'User logged out successfully'
+            'message' => 'Password reset token generated successfully',
+            'token' => $token // Return token for testing in Postman
         ]);
+    }
+
+    // Reset Password
+    public function resetPassword(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email|exists:users,email',
+            'token' => 'required|string',
+            'password' => 'required|string|min:6|confirmed',
+        ]);
+
+        $passwordReset = DB::table('password_resets')
+            ->where('email', $request->email)
+            ->first();
+
+        if (!$passwordReset) {
+            return response()->json(['error' => 'Invalid token or email'], 400);
+        }
+
+        // Verify token
+        if (!Hash::check($request->token, $passwordReset->token)) {
+            return response()->json(['error' => 'Invalid token'], 400);
+        }
+
+        // Update user password
+        $user = User::where('email', $request->email)->first();
+        $user->password = Hash::make($request->password);
+        $user->save();
+
+        // Delete token
+        DB::table('password_resets')->where('email', $request->email)->delete();
+
+        return response()->json(['message' => 'Password has been reset successfully']);
+    }
+    // Change Password (for logged-in user)
+   public function changePassword(Request $request)
+{
+    $request->validate([
+        'current_password' => 'required|string',
+        'new_password' => 'required|string|min:6|confirmed',
+    ]);
+
+    try {
+        $user = User::find(auth()->user()->id);
+
+        if (!$user) {
+            return response()->json(['error' => 'User not found'], 404);
+        }
+
+        if (!Hash::check($request->current_password, $user->password)) {
+            return response()->json(['error' => 'Current password is incorrect'], 400);
+        }
+
+        $user->password = Hash::make($request->new_password);
+        $user->save();
+
+        return response()->json(['message' => 'Password changed successfully.'], 200);
     } catch (\Exception $e) {
         return response()->json([
-            'error' => 'Failed to logout, token invalid or missing'
+            'error' => 'Something went wrong while changing password.',
+            'details' => $e->getMessage(),
         ], 500);
     }
 }
+
 }

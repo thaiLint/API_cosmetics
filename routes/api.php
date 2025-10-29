@@ -39,6 +39,10 @@ Route::post('reset-password', [AuthController::class, 'resetPassword']);
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('jwt.auth');
+Route::middleware('auth:api')->post('/change-password', [AuthController::class, 'changePassword']);
+
+
+
 
 
 
@@ -69,13 +73,11 @@ Route::prefix('brand')->group(function () {
 });
 
 // add to cart
-Route::group(['middleware' => ['jwt.auth']], function () {
-    
-    Route::post('cart/add', [CartController::class, 'addToCart']);
-    Route::get('cart/user', [CartController::class, 'getCartByUserId']);
-    Route::post('cart/remove-one', [CartController::class, 'removeQtyByOne']);
-    Route::delete('cart/remove-all', [CartController::class, 'removeAllItems']);
-});
+Route::post('cart/add', [CartController::class, 'addToCart']);
+Route::get('cart/user', [CartController::class, 'getCartByUserId']);
+Route::post('cart/remove-one', [CartController::class, 'removeQtyByOne']);
+Route::delete('cart/remove-all', [CartController::class, 'removeAllItems']);
+
 
 //Reviews
 Route::get('products/{id}/reviews', [ReviewController::class, 'getReviews']);
@@ -89,12 +91,14 @@ Route::middleware('auth:sanctu')->group(function() {
     Route::get('/favorites', [FavoriteController::class, 'getFavorites']);
 });
 
-Route::middleware('jwt.auth')->group(function () {
+// Orders
+Route::middleware('auth:api')->group(function () {
     Route::post('/orders', [OrderController::class, 'placeOrder']);
     Route::get('/orders', [OrderController::class, 'getOrderByUser']);
-    Route::put('/orders/{id}/status', [OrderController::class, 'updateStatus']);
+    Route::put('/orders/{id}', [OrderController::class, 'updateStatus']);
     Route::delete('/orders/{id}', [OrderController::class, 'cancelOrder']);
 });
+
 Route::middleware('auth:api')->group(function () {
     Route::post('/payment', [PaymentController::class, 'generatePayment']);
 });

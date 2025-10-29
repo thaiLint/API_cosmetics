@@ -22,10 +22,13 @@ return [
     ],
 
     'providers' => [
+    //      'users' => [
+    //     'driver' => 'eloquent',
+    //     'model' => App\Models\Auth::class,  // <- use your Auth model
+    // ],
 
-        /*
-         * Laravel Framework Service Providers...
-         */
+
+       
         Illuminate\Auth\AuthServiceProvider::class,
         Illuminate\Broadcasting\BroadcastServiceProvider::class,
         Illuminate\Bus\BusServiceProvider::class,
@@ -67,7 +70,7 @@ return [
         'JWTFactory' => Tymon\JWTAuth\Facades\JWTFactory::class,
     ])->toArray(),
 
-    'guards' => [
+   'guards' => [
     'web' => [
         'driver' => 'session',
         'provider' => 'users',
@@ -79,5 +82,6 @@ return [
         'hash' => false,
     ],
 ],
+
 
 ];

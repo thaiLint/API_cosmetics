@@ -77,12 +77,12 @@ class PaymentController extends Controller
         }
 
         // Full Telegram message
-        $message = "✅ <b>New Order Completed</b>\n\n";
+        $message = " <b>New Order Completed</b>\n\n";
         $message .= "<b>User:</b> {$user->name} ({$user->email})\n";
         $message .= "<b>Order ID:</b> {$order['id']}\n";
         $message .= "<b>Items:</b>\n{$itemsText}";
         $message .= "<b>Total:</b> {$order['total']} USD\n";
-        $message .= "<b>Payment Status:</b> Successful ✅\n";
+        $message .= "<b>Payment Status:</b> Successful \n";
         $message .= "<b>Date:</b> " . now()->format('Y-m-d H:i') . "\n";
 
         // Send Telegram notification

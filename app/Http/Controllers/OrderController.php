@@ -42,11 +42,10 @@ class OrderController extends Controller
     }
 
     // 2. Get Orders by User
-    public function getOrderByUser() {
-        $orders = Order::with('items.product')->where('user_id', Auth::id())->get();
-        return response()->json($orders);
-    }
-
+  public function getOrderByUser() {
+    $orders = Order::with('items.product')->where('user_id', Auth::id())->get();
+    return response()->json($orders);
+}
     // 3. Update Status
     public function updateStatus(Request $request, $id) {
         $request->validate(['status' => 'required|string']);
